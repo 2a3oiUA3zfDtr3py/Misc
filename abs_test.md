@@ -7,7 +7,7 @@ gcc version 5.4.0
 コンパイルオプション  
 -O3 -D type?  
 
-三回実行した時間の中央値
+三回実行した時間の中央値  
 type1 user    0m10.910s  
 type2 user    0m10.940s  
 type3 user    0m4.560s  
