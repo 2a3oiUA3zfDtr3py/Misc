@@ -12,10 +12,11 @@
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
-#define num_parent 400
-#define num_group_size 200
-#define num_data_set 1
-#define data_pool_size 1
+#define num_parent 128
+//#define num_group_size 16
+int num_group_size;
+#define data_pool_size 90
+#define num_data_set 6
 #ifdef DOUBLE
 #define RealNumber double
 #define RealNumber_MAX DBL_MAX
@@ -63,135 +64,225 @@ pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t rand_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
 
-int vector_x_matrix(RealNumber *a,int a_size,RealNumber **b,int b_row,int b_col,RealNumber *c,int c_size) {
+int vector_x_matrix(RealNumber *a,int a_size,RealNumber **b,int b_row,int b_col,RealNumber *c,int c_size)
+{
     int i,j;
-    for(j=0;j<b_col;j++) {
+    for(j=0;j<b_col;j++)
+    {
         c[j] =0.0;
     }
-    for(i=0;i<b_row;i++) {
-        for(j=0;j<b_col;j++) {
+    for(i=0;i<b_row;i++)
+    {
+        for(j=0;j<b_col;j++)
+        {
             c[j] += b[i][j] * a[i];
         }
     }
     return 0;
 }
 
-int calc(RealNumber *gene,struct st_data *data,RealNumber *diff,RealNumber ***a,RealNumber **b,RealNumber *c) {
+int calc_regularization(RealNumber *gene,RealNumber *diff)
+{
+    int i,return_code;
+    double t1,t2;
+    RealNumber t3;
+    return_code = 0;
+    t1 = 0;
+    for(i=0;i<element_size;i++)
+    {
+        t2 = (double)(gene[i]);
+        if(t2 < 0.0)
+        {
+            t2 = -t2;
+        }
+        t2 = sqrt(t2);
+        t1 += t2;
+    }
+    t1 *= t1;
+    t1 *= 0.0000001;
+
+    t3 = (RealNumber)t1;
+    if(isfinite(t3))
+    {
+        *diff = t3;
+    }
+    else
+    {
+        *diff = -1.0;
+    }
+    return return_code;
+}
+
+int calc(RealNumber *gene,struct st_data *data,RealNumber *diff,RealNumber ***a,RealNumber **b,RealNumber *c)
+{
     int return_code;
     int i,j,k,l,m,n,width,height;
     int p[pix_ref][2];
-    RealNumber temp;
+    double t1;
+    RealNumber t2;
     return_code = 0;
     width = data->width;
     height = data->height;
     
-    if(*diff < -0.5)
+    if(*diff < -0.5 || !isfinite(*diff))
     {
+        *diff = -1.0;
         goto minus_diff;
     }
 
     a[0][0] = gene;
-    for(j=1;j<pix_ref*matrix_size[0][0]+aux_vector_size;j++) {
+    for(j=1;j<pix_ref*matrix_size[0][0]+aux_vector_size;j++)
+    {
         a[0][j] = a[0][j-1] + matrix_size[0][1];
     }
     for(i=1;i<layer;i++)
     {
         a[i][0] = a[i-1][pix_ref*matrix_size[i-1][0] + aux_vector_size -1] + matrix_size[i-1][1];
-        for(j=1;j<pix_ref*matrix_size[i][0] + aux_vector_size;j++) {
+        for(j=1;j<pix_ref*matrix_size[i][0] + aux_vector_size;j++)
+        {
             a[i][j] = a[i][j-1] + matrix_size[i][1];
         }
     }
 
-    for(i=0;i<height*width*matrix_size[0][0];i++) {
+    for(i=0;i<height*width*matrix_size[0][0];i++)
+    {
         b[0][i] = data->input_image_data[i];
     }
+
     l=0;
-    for(j=-1;j<=1;j++) {
-        for(k=-1;k<=1;k++) {
+    for(j=-1;j<=1;j++)
+    {
+        for(k=-1;k<=1;k++)
+        {
             p[l][0] = j*matrix_size[0][2];
             p[l][1] = k*matrix_size[0][2];
             l++;
         }
     }
-    for(j=0;j<height;j++) {
-        for(k=0;k<width;k++) {
-            for(n=0;n<pix_ref;n++) {
-                if(j+p[n][0] >= 0 && j+p[n][0] < height && k+p[n][1] >= 0 && k+p[n][1] < width) {
-                    for(m=0;m<matrix_size[0][0];m++) {
+    for(j=0;j<height;j++)
+    {
+        for(k=0;k<width;k++)
+        {
+            for(n=0;n<pix_ref;n++)
+            {
+                if(j+p[n][0] >= 0 && j+p[n][0] < height && k+p[n][1] >= 0 && k+p[n][1] < width)
+                {
+                    for(m=0;m<matrix_size[0][0];m++)
+                    {
                         c[matrix_size[0][0]*n + m] = b[0][matrix_size[0][0]*((j+p[n][0])*width+(k+p[n][1]))+m];
                     }
-                }else{
-                    for(m=0;m<matrix_size[0][0];m++) {
+                }
+                else
+                {
+                    for(m=0;m<matrix_size[0][0];m++)
+                    {
                             c[matrix_size[0][0]*n + m] = -1.0;
                     }
                 }
             }
             vector_x_matrix(c,pix_ref*matrix_size[0][0],a[0],pix_ref*matrix_size[0][0],matrix_size[0][1],
                             c+pix_ref*hidden_channels,matrix_size[0][1]);
-            for(n=0;n<matrix_size[0][1];n++) {
+            for(n=0;n<matrix_size[0][1];n++)
+            {
                 c[pix_ref*hidden_channels+n] += a[0][pix_ref*matrix_size[0][0]][n];
                 b[1][matrix_size[0][1]*(j*width+k)+n] = c[pix_ref*hidden_channels+n];
             }
         }
     }
-    
-    
-    for(i=1;i<layer;i++) {
+
+    for(i=1;i<layer;i++)
+    {
         l=0;
-        for(j=-1;j<=1;j++) {
-            for(k=-1;k<=1;k++) {
+        for(j=-1;j<=1;j++)
+        {
+            for(k=-1;k<=1;k++)
+            {
                 p[l][0] = j*matrix_size[i][2];
                 p[l][1] = k*matrix_size[i][2];
                 l++;
             }
         }
-        for(j=0;j<height*width*matrix_size[i][0];j++) {
-            if(b[i][j] < 0.0) {
-                b[i][j] *= 0.1;
+        for(j=0;j<height*width*matrix_size[i][0];j++)
+        {
+            if(b[i][j] < 0.0)
+            {
+                b[i][j] = 0.0;
             }
         }
-        for(j=0;j<height;j++) {
-            for(k=0;k<width;k++) {
-                for(n=0;n<pix_ref;n++) {
-                    if(j+p[n][0] < 0) {
-                        if(k+p[n][1] < 0) {
-                            for(m=0;m<matrix_size[i][0];m++) {
+        for(j=0;j<height;j++)
+        {
+            for(k=0;k<width;k++)
+            {
+                for(n=0;n<pix_ref;n++)
+                {
+                    if(j+p[n][0] < 0)
+                    {
+                        if(k+p[n][1] < 0)
+                        {
+                            for(m=0;m<matrix_size[i][0];m++)
+                            {
                                 c[matrix_size[i][0]*n + m] = b[i][m];
                             }
-                        }else if(k+p[n][1] < width) {
-                            for(m=0;m<matrix_size[i][0];m++) {
+                        }
+                        else if(k+p[n][1] < width)
+                        {
+                            for(m=0;m<matrix_size[i][0];m++)
+                            {
                                 c[matrix_size[i][0]*n + m] = b[i][matrix_size[i][0]*(k+p[n][1])+m];
                             }
-                        }else {
-                            for(m=0;m<matrix_size[i][0];m++) {
+                        }
+                        else
+                        {
+                            for(m=0;m<matrix_size[i][0];m++)
+                            {
                                 c[matrix_size[i][0]*n + m] = b[i][matrix_size[i][0]*(width-1)+m];
                             }
                         }
-                    }else if(j+p[n][0] < height) {
-                        if(k+p[n][1] < 0) {
-                            for(m=0;m<matrix_size[i][0];m++) {
+                    }
+                    else if(j+p[n][0] < height)
+                    {
+                        if(k+p[n][1] < 0)
+                        {
+                            for(m=0;m<matrix_size[i][0];m++)
+                            {
                                 c[matrix_size[i][0]*n + m] = b[i][matrix_size[i][0]*((j+p[n][0])*width)+m];
                             }
-                        }else if(k+p[n][1] < width) {
-                            for(m=0;m<matrix_size[i][0];m++) {
+                        }
+                        else if(k+p[n][1] < width)
+                        {
+                            for(m=0;m<matrix_size[i][0];m++)
+                            {
                                 c[matrix_size[i][0]*n + m] = b[i][matrix_size[i][0]*((j+p[n][0])*width+(k+p[n][1]))+m];
                             }
-                        }else {
-                            for(m=0;m<matrix_size[i][0];m++) {
+                        }
+                        else
+                        {
+                            for(m=0;m<matrix_size[i][0];m++)
+                            {
                                 c[matrix_size[i][0]*n + m] = b[i][matrix_size[i][0]*((j+p[n][0])*width+(width-1))+m];
                             }
                         }
-                    }else{
-                        if(k+p[n][1] < 0) {
-                            for(m=0;m<matrix_size[i][0];m++) {
+                    }
+                    else
+                    {
+                        if(k+p[n][1] < 0)
+                        {
+                            for(m=0;m<matrix_size[i][0];m++)
+                            {
                                 c[matrix_size[i][0]*n + m] = b[i][matrix_size[i][0]*((height-1)*width)+m];
                             }
-                        }else if(k+p[n][1] < width) {
-                            for(m=0;m<matrix_size[i][0];m++) {
+                        }
+                        else if(k+p[n][1] < width)
+                        {
+                            for(m=0;m<matrix_size[i][0];m++)
+                            {
                                 c[matrix_size[i][0]*n + m] = b[i][matrix_size[i][0]*((height-1)*width+(k+p[n][1]))+m];
                             }
-                        }else {
-                            for(m=0;m<matrix_size[i][0];m++) {
+                        }
+                        else
+                        {
+                            for(m=0;m<matrix_size[i][0];m++)
+                            {
                                 c[matrix_size[i][0]*n + m] = b[i][matrix_size[i][0]*((height-1)*width+(width-1))+m];
                             }
                         }
@@ -199,28 +290,35 @@ int calc(RealNumber *gene,struct st_data *data,RealNumber *diff,RealNumber ***a,
                 }
                 vector_x_matrix(c,pix_ref*matrix_size[i][0],a[i],pix_ref*matrix_size[i][0],matrix_size[i][1],
                                 c+pix_ref*hidden_channels,matrix_size[i][1]);
-                for(n=0;n<matrix_size[i][1];n++) {
+                for(n=0;n<matrix_size[i][1];n++)
+                {
                     c[pix_ref*hidden_channels+n] += a[i][pix_ref*matrix_size[i][0]][n];
                     b[i+1][matrix_size[i][1]*(j*width+k)+n] = c[pix_ref*hidden_channels+n];
                 }
             }
         }
     }
-    
-    temp = 0.0;
-    for(j=0;j<height*width*matrix_size[layer-1][1];j++) {
+
+    t1 = 0.0;
+    for(j=0;j<height*width*matrix_size[layer-1][1];j++)
+    {
         b[layer][j] -= data->output_image_data[j];
-        temp += b[layer][j]*b[layer][j];
+        t1 += (double)(b[layer][j]*b[layer][j]);
     }
-    if(isfinite(temp)) {
-        *diff += temp;
-    } else {
+    t2 = (RealNumber)t1;
+    if(isfinite(t2))
+    {
+        *diff += t2;
+    }
+    else
+    {
         *diff = -1.0;
     }
     
 
     minus_diff:
-    if(return_code) {
+    if(return_code)
+    {
         *diff = -1.0;
     }
     return return_code;
@@ -304,13 +402,15 @@ int R_sort(RealNumber *score,int *idx,int size)
     int ret_val;
     int *index[2];
     ret_val = 0;
-    if(idx == NULL || score == NULL) {
+    if(idx == NULL || score == NULL)
+    {
         ret_val = -1;
         goto error01;
     }
     index[0] = idx;
     index[1] = (int *)malloc(size*sizeof(int));
-    if(index[1] == NULL){
+    if(index[1] == NULL)
+    {
         ret_val = -1;
         goto error01;
     }
@@ -323,20 +423,25 @@ int R_sort(RealNumber *score,int *idx,int size)
     return ret_val;
 }
 
-int get_random(uint64_t *data,int size) {
+int get_random(uint64_t *data,int size)
+{
     static int i=UrandomBuff;
     int j,k,ret_code;
     ret_code = 0;
-    if(lp_urandom == NULL || urandom_fd < 0) {
+    if(lp_urandom == NULL || urandom_fd < 0)
+    {
         ret_code = -1;
         goto urandom_error;
     }
     
     k=0;
-    while(k < size) {
-        if(i == UrandomBuff) {
+    while(k < size)
+    {
+        if(i == UrandomBuff)
+        {
             j = read(urandom_fd,lp_urandom,UrandomBuff*sizeof(uint64_t));
-            if(j != UrandomBuff*sizeof(uint64_t)) {
+            if(j != UrandomBuff*sizeof(uint64_t))
+            {
                 ret_code = -1;
                 goto urandom_error;
             }
@@ -361,35 +466,46 @@ int I_sort_p(uint64_t *r,int *idx_a,int *idx_b,int size)
     }
     index[0] = idx_a;
     index[1] = idx_b;
-    for(i=0;i<size;i++) {
+    for(i=0;i<size;i++)
+    {
         index[0][i] = i;
     }
     l=0;
-    for(i=1;i<size;i*=2) {
-        for(j=0;j<size;j+=i*2) {
+    for(i=1;i<size;i*=2)
+    {
+        for(j=0;j<size;j+=i*2)
+        {
             k=j;
             m=j;
             n=j+i;
             m_max = (m+i<size)? m+i:size;
             n_max = (n+i<size)? n+i:size;
-            while(m<m_max && n<n_max) {
-                if(r[index[l][m]] < r[index[l][n]]) {
+            while(m<m_max && n<n_max)
+            {
+                if(r[index[l][m]] < r[index[l][n]])
+                {
                     index[l^0x01][k++] = index[l][m++];
-                }else{
+                }
+                else
+                {
                     index[l^0x01][k++] = index[l][n++];
                 }
             }
-            while(m<m_max) {
+            while(m<m_max)
+            {
                 index[l^0x01][k++] = index[l][m++];
             }
-            while(n<n_max) {
+            while(n<n_max)
+            {
                 index[l^0x01][k++] = index[l][n++];
             }
         }
         l ^= 0x01;
     }
-    if(l == 1) {
-        for(i=0;i<size;i++) {
+    if(l == 1)
+    {
+        for(i=0;i<size;i++)
+        {
             index[0][i] = index[1][i];
         }
     }
@@ -397,7 +513,8 @@ int I_sort_p(uint64_t *r,int *idx_a,int *idx_b,int size)
     return ret_code;
 }
 
-int get_sud(double *data,int size) {
+int get_sud(double *data,int size)
+{
     int64_t n;
     int i,ret_code;
     ret_code = 0;
@@ -416,7 +533,8 @@ int get_sud(double *data,int size) {
     return ret_code;
 }
 
-int get_sd(double *data,int size) {
+int get_sd(double *data,int size)
+{
     static int i=2;
     static uint64_t n[2];
     static double f[2];
@@ -425,31 +543,42 @@ int get_sd(double *data,int size) {
     ret_code = 0;
     
     k=0;
-    while(k < size) {
-        if(i == 2) {
-            if(get_random(n,2)) {
+    while(k < size)
+    {
+        if(i == 2)
+        {
+            if(get_random(n,2))
+            {
                 ret_code = -1;
                 goto error;
             }
-            if(n[0] == 0) {
+            if(n[0] == 0)
+            {
                 n[0]++;
-            }else if(n[0] == UINT64_MAX) {
+            }
+            else if(n[0] == UINT64_MAX)
+            {
                 n[0]--;
             }
-            if(n[1] == 0) {
+            if(n[1] == 0)
+            {
                 n[1]++;
-            }else if(n[1] == UINT64_MAX) {
+            }
+            else if(n[1] == UINT64_MAX)
+            {
                 n[1]--;
             }
             temp[0] = ((double)n[0])/((double)UINT64_MAX);
             temp[1] = ((double)n[1])/((double)UINT64_MAX);
             temp[0] = sqrt(-2.0 * log(temp[0]));
             temp[1] *= 2.0 * M_PI;
-            if(!isfinite(temp[0])) {
+            if(!isfinite(temp[0]))
+            {
                 ret_code = -1;
                 goto error;
             }
-            if(!isfinite(temp[1])) {
+            if(!isfinite(temp[1]))
+            {
                 ret_code = -1;
                 goto error;
             }
@@ -464,27 +593,32 @@ int get_sd(double *data,int size) {
     return ret_code;
 }
 
-int random_list(int *idx,int size) {
+int random_list(int *idx,int size)
+{
     int i,ret_code;
     int *index;
     uint64_t *r;
     ret_code = 0;
-    if(idx == NULL || size <= 0) {
+    if(idx == NULL || size <= 0)
+    {
         ret_code = -1;
         goto input_error;
     }
     index = (int *)malloc(size*sizeof(int));
-    if(index == NULL) {
+    if(index == NULL)
+    {
         ret_code = -1;
         goto malloc_error1;
     }
     r = (uint64_t *)malloc(size*sizeof(uint64_t));
-    if(r == NULL) {
+    if(r == NULL)
+    {
         ret_code = -1;
         goto malloc_error2;
     }
     i = get_random(r,size);
-    if(i) {
+    if(i)
+    {
         ret_code = -1;
         goto urandom_error;
     }
@@ -500,25 +634,29 @@ int random_list(int *idx,int size) {
     return ret_code;
 }
 
-int save_gene(char *filename,RealNumber *gene) {
+int save_gene(char *filename,RealNumber *gene)
+{
     int fd,length,ret_code;
     ret_code = 0;
     fd = open(filename,O_WRONLY|O_CREAT|O_TRUNC,0666);
-    if(fd < 0) {
+    if(fd < 0)
+    {
         ret_code = -1;
         goto file_open_error;
     }
     length = write(fd,gene,element_size * sizeof(RealNumber));
-    if(length != element_size * sizeof(RealNumber)) {
+    if(length != element_size * sizeof(RealNumber))
+    {
         ret_code = -1;
     }
-    
+
     close(fd);
     file_open_error:
     return ret_code;
 }
 
-int load_gene(char *filename,RealNumber *gene) {
+int load_gene(char *filename,RealNumber *gene)
+{
     int i,fd,ret_code;
     struct stat file_stat;
     ret_code = 0;
@@ -551,7 +689,8 @@ int load_gene(char *filename,RealNumber *gene) {
     return ret_code;
 }
 
-int get_filedata(struct st_data *data,int file_nunber) {
+int get_filedata(struct st_data *data,int file_nunber)
+{
     int i,ret_code = 0;
     unsigned long internal_width[2],internal_height[2];
     RealNumber *internal_data[2];
@@ -560,16 +699,19 @@ int get_filedata(struct st_data *data,int file_nunber) {
     char file_name[256];
     char *file_base[2] = { "./data/%08da.png" , "./data/%08db.png" };
 
-    if(file_nunber < 0 || file_nunber >= data_pool_size || data == NULL) {
+    if(file_nunber < 0 || file_nunber >= data_pool_size || data == NULL)
+    {
         goto input_error;
         ret_code = -1;
     }
 
-    if(data->input_image_data != NULL) {
+    if(data->input_image_data != NULL)
+    {
         free(data->input_image_data);
         data->input_image_data = NULL;
     }
-    if(data->output_image_data != NULL) {
+    if(data->output_image_data != NULL)
+    {
         free(data->output_image_data);
         data->output_image_data = NULL;
     }
@@ -649,18 +791,30 @@ int get_filedata(struct st_data *data,int file_nunber) {
     return ret_code;
 }
 
-void* calc_p(void *arg) {
+void* calc_p(void *arg)
+{
     void **args = (void *)arg;
     RealNumber **gene  = (RealNumber **)args[0];
     struct st_data *data = (struct st_data *)args[1];
     RealNumber *diff  = (RealNumber  *)args[2];
     int length = *(int *)args[3];
     int *threadnum = (int *)args[4];
-    int i,j;
+    int i,j,k;
     RealNumber ***a,**b,*c;
     
+    k=data[0].width*data[0].height;
+    for(i=1;i<num_data_set;i++)
+    {
+        j = data[i].width*data[i].height;
+        if(k < j)
+        {
+            k = j;
+        }
+    }
+    
     a = (RealNumber ***)malloc(layer*sizeof(RealNumber **));
-    if(a == NULL) {
+    if(a == NULL)
+    {
         goto malloc_a_error1;
     }
     j=0;
@@ -669,7 +823,8 @@ void* calc_p(void *arg) {
         j += pix_ref*matrix_size[i][0] + aux_vector_size;
     }
     a[0] = (RealNumber **)malloc(j*sizeof(RealNumber *));
-    if(a[0] == NULL) {
+    if(a[0] == NULL)
+    {
         goto malloc_a_error2;
     }
     for(i=1;i<layer;i++)
@@ -682,25 +837,36 @@ void* calc_p(void *arg) {
         j = (j<matrix_size[i][1])? matrix_size[i][1] : j;
     }
     b = (RealNumber **)malloc((layer+1)*sizeof(RealNumber *));
-    if(b == NULL) {
+    if(b == NULL)
+    {
         goto malloc_b_error1;
     }
-    b[0] = (RealNumber *)malloc(2*j*(data->width)*(data->height)*sizeof(RealNumber));
-    if(b == NULL) {
+    b[0] = (RealNumber *)malloc(2*j*k*sizeof(RealNumber));
+    if(b == NULL)
+    {
         goto malloc_b_error2;
     }
-    b[1] = b[0] + j*(data->width)*(data->height);
+    b[1] = b[0] + j*k;
     for(i=2;i<=layer;i++)
     {
         b[i] = b[i&0x01];
     }
     c = (RealNumber *)malloc(2*pix_ref*j*sizeof(RealNumber));
-    if(c == NULL) {
+    if(c == NULL)
+    {
         goto malloc_c_error;
     }
-
-    for(i=0;i<length;i++) {
-        calc(gene[i],data,diff + i,a,b,c);
+    
+    for(j=0;j<length;j++)
+    {
+        calc_regularization(gene[j],diff + j);
+    }
+    for(i=0;i<num_data_set;i++)
+    {
+        for(j=0;j<length;j++)
+        {
+            calc(gene[j],data + i,diff + j,a,b,c);
+        }
     }
 
     free(c);
@@ -721,7 +887,8 @@ void* calc_p(void *arg) {
     return NULL;
 }
 
-int superset_gene_calc(RealNumber **gene,RealNumber *diff,struct st_data *data) {
+int superset_gene_calc(RealNumber **gene,RealNumber *diff,struct st_data *data)
+{
     int i,j,k,l,m,n,o,ret_code;
     int **threadnum,*threads_gene_number,**threads_gene_length;
     void ***lp;
@@ -729,65 +896,80 @@ int superset_gene_calc(RealNumber **gene,RealNumber *diff,struct st_data *data) 
     RealNumber **internal_diff;
     ret_code = 0;
     lp = (void ***)malloc(ThreadQuantity*sizeof(void **));
-    if(lp == NULL) {
+    if(lp == NULL)
+    {
         ret_code = -1;
         goto malloc_error1;
     }
-    for(i=0;i<ThreadQuantity;i++) {
+    for(i=0;i<ThreadQuantity;i++)
+    {
         lp[i] = (void **)malloc(9*sizeof(void *));
-        if(lp[i] == NULL) {
+        if(lp[i] == NULL)
+        {
             ret_code = -1;
             goto malloc_error2;
         }
     }
     threads = (pthread_t *)malloc(ThreadQuantity*sizeof(pthread_t));
-    if(threads == NULL) {
+    if(threads == NULL)
+    {
         ret_code = -1;
         goto malloc_error2;
     }
     internal_diff = (RealNumber **)malloc(ThreadQuantity*sizeof(RealNumber *));
-    if(internal_diff == NULL) {
+    if(internal_diff == NULL)
+    {
         ret_code = -1;
         goto malloc_error3;
     }
-    for(i=0;i<ThreadQuantity;i++) {
+    for(i=0;i<ThreadQuantity;i++)
+    {
         internal_diff[i] = (RealNumber *)malloc(num_parent*sizeof(RealNumber));
-        if(internal_diff[i] == NULL) {
+        if(internal_diff[i] == NULL)
+        {
             ret_code = -1;
             goto malloc_error4;
         }
     }
     threadnum = (int **)malloc(ThreadQuantity*sizeof(int *));
-    if(threadnum == NULL) {
+    if(threadnum == NULL)
+    {
         ret_code = -1;
         goto malloc_error4;
     }
-    for(i=0;i<ThreadQuantity;i++) {
+    for(i=0;i<ThreadQuantity;i++)
+    {
         threadnum[i] = (int *)malloc(sizeof(int));
-        if(threadnum[i] == NULL) {
+        if(threadnum[i] == NULL)
+        {
             ret_code = -1;
             goto malloc_error5;
         }
     }
     threads_gene_number = (int *)malloc(ThreadQuantity*sizeof(int));
-    if(threads_gene_number == NULL) {
+    if(threads_gene_number == NULL)
+    {
         ret_code = -1;
         goto malloc_error5;
     }
     threads_gene_length = (int **)malloc(ThreadQuantity*sizeof(int *));
-    if(threads_gene_length == NULL) {
+    if(threads_gene_length == NULL)
+    {
         ret_code = -1;
         goto malloc_error6;
     }
-    for(i=0;i<ThreadQuantity;i++) {
+    for(i=0;i<ThreadQuantity;i++)
+    {
         threads_gene_length[i] = (int *)malloc(sizeof(int));
-        if(threads_gene_length[i] == NULL) {
+        if(threads_gene_length[i] == NULL)
+        {
             ret_code = -1;
             goto malloc_error7;
         }
     }
     
-    for(i=0;i<ThreadQuantity;i++) {
+    for(i=0;i<ThreadQuantity;i++)
+    {
         lp[i][1] = (void *)data;
         lp[i][2] = (void *)internal_diff[i];
         lp[i][3] = (void *)threads_gene_length[i];
@@ -796,31 +978,41 @@ int superset_gene_calc(RealNumber **gene,RealNumber *diff,struct st_data *data) 
     }
     
     k = 0;
-    while(1) {
+    while(1)
+    {
         i = (num_parent - k)/(ThreadQuantity + 1);
-        if(i == 0) {
+        if(i == 0)
+        {
             break;
         }
-        for(l=0;l<ThreadQuantity;l++) {
+        for(l=0;l<ThreadQuantity;l++)
+        {
             pthread_mutex_lock(&mutex);
-            while(1) {
+            while(1)
+            {
                 m=0;
                 for(n=0;n<ThreadQuantity;n++) {
                     m=threadnum[n][0];
-                    if(m) {
+                    if(m)
+                    {
                         break;
                     }
                 }
-                if(m) {
+                if(m)
+                {
                     break;
-                } else {
+                }
+                else
+                {
                     pthread_cond_wait(&cond, &mutex);
                 }
             }
             pthread_mutex_unlock(&mutex);
-            if(m==-1) {
+            if(m==-1)
+            {
                 pthread_join(threads[n],NULL);
-                for(o=0;o<threads_gene_length[n][0];o++) {
+                for(o=0;o<threads_gene_length[n][0];o++)
+                {
                     diff[o+threads_gene_number[n]] = internal_diff[n][o];
                 }
             }
@@ -828,36 +1020,46 @@ int superset_gene_calc(RealNumber **gene,RealNumber *diff,struct st_data *data) 
             threads_gene_number[n] = k;
             threads_gene_length[n][0] = i;
             threadnum[n][0] = 0;
-            for(o=0;o<threads_gene_length[n][0];o++) {
+            for(o=0;o<threads_gene_length[n][0];o++)
+            {
                 internal_diff[n][o] = diff[o+threads_gene_number[n]];
             }
             pthread_create(threads+n,NULL,(void *)calc_p,(void *)lp[n]);
             k += i;
         }
     }
-    for(i=k;i<num_parent;i++) {
+    for(i=k;i<num_parent;i++)
+    {
         pthread_mutex_lock(&mutex);
-        while(1) {
+        while(1)
+        {
             m=0;
-            for(n=0;n<ThreadQuantity;n++) {
+            for(n=0;n<ThreadQuantity;n++)
+            {
                 m=threadnum[n][0];
-                if(m) {
+                if(m)
+                {
                     break;
                 }
             }
-            if(m) {
+            if(m)
+            {
                 break;
-            }else {
+            }
+            else
+            {
                 pthread_cond_wait(&cond, &mutex);
             }
         }
         pthread_mutex_unlock(&mutex);
-        if(m == -1) {
+        if(m == -1)
+        {
             pthread_join(threads[n],NULL);
             pthread_mutex_lock(&mutex);
             threadnum[n][0] = -2;
             pthread_mutex_unlock(&mutex);
-            for(o=0;o<threads_gene_length[n][0];o++) {
+            for(o=0;o<threads_gene_length[n][0];o++)
+            {
                 diff[o+threads_gene_number[n]] = internal_diff[n][o];
             }
         }
@@ -865,59 +1067,79 @@ int superset_gene_calc(RealNumber **gene,RealNumber *diff,struct st_data *data) 
         threads_gene_number[n] = i;
         threads_gene_length[n][0] = 1;
         threadnum[n][0] = 0;
-        for(o=0;o<threads_gene_length[n][0];o++) {
+        for(o=0;o<threads_gene_length[n][0];o++)
+        {
             internal_diff[n][o] = diff[o+threads_gene_number[n]];
         }
         pthread_create(threads+n,NULL,(void *)calc_p,(void *)lp[n]);
     }
-    for(n=0;n<ThreadQuantity;n++) {
+    for(n=0;n<ThreadQuantity;n++)
+    {
         pthread_mutex_lock(&mutex);
         m=threadnum[n][0];
         pthread_mutex_unlock(&mutex);
-        if(m != -2) {
+        if(m != -2)
+        {
             pthread_join(threads[n],NULL);
-            for(o=0;o<threads_gene_length[n][0];o++) {
+            for(o=0;o<threads_gene_length[n][0];o++)
+            {
                 diff[o+threads_gene_number[n]] = internal_diff[n][o];
             }
         }
     }
-    while(1) {
+    while(1)
+    {
         pthread_mutex_lock(&mutex);
         j=-1;
-        while(1) {
+        while(1)
+        {
             m=0;
-            for(n=0;n<ThreadQuantity;n++) {
+            for(n=0;n<ThreadQuantity;n++)
+            {
                 m=threadnum[n][0];
-                if(m == 0) {
+                if(m == 0)
+                {
                     j=0;
-                }else if(m == -1) {
+                }
+                else if(m == -1)
+                {
                     break;
                 }
             }
-            if(m == -1  || (j!=0  && n == ThreadQuantity)) {
+            if(m == -1  || (j!=0  && n == ThreadQuantity))
+            {
                 break;
-            }else{
+            }
+            else
+            {
                 pthread_cond_wait(&cond, &mutex);
             }
         }
         pthread_mutex_unlock(&mutex);
-        if(m==-1) {
+        if(m==-1)
+        {
             pthread_join(threads[n],NULL);
             threadnum[n][0] = -2;
-            for(o=0;o<threads_gene_length[n][0];o++) {
+            for(o=0;o<threads_gene_length[n][0];o++)
+            {
                 diff[o+threads_gene_number[n]] = internal_diff[n][o];
             }
         }
-        if(j && n == ThreadQuantity) {
+        if(j && n == ThreadQuantity)
+        {
             break;
         }
     }
 
     malloc_error7:
-    for(i=0;i<ThreadQuantity;i++) {
-        if(threads_gene_length[i] != NULL) {
+    for(i=0;i<ThreadQuantity;i++)
+    {
+        if(threads_gene_length[i] != NULL)
+        {
             free(threads_gene_length[i]);
-        }else{
+        }
+        else
+        {
             break;
         }
     }
@@ -925,19 +1147,27 @@ int superset_gene_calc(RealNumber **gene,RealNumber *diff,struct st_data *data) 
     malloc_error6:
     free(threads_gene_number);
     malloc_error5:
-    for(i=0;i<ThreadQuantity;i++) {
-        if(threadnum[i] != NULL) {
+    for(i=0;i<ThreadQuantity;i++)
+    {
+        if(threadnum[i] != NULL)
+        {
             free(threadnum[i]);
-        }else{
+        }
+        else
+        {
             break;
         }
     }
     free(threadnum);
     malloc_error4:
-    for(i=0;i<ThreadQuantity;i++) {;
-        if(internal_diff[i] != NULL) {
+    for(i=0;i<ThreadQuantity;i++)
+    {
+        if(internal_diff[i] != NULL)
+        {
             free(internal_diff[i]);
-        }else{
+        }
+        else
+        {
             break;
         }
     }
@@ -945,10 +1175,14 @@ int superset_gene_calc(RealNumber **gene,RealNumber *diff,struct st_data *data) 
     malloc_error3:
     free(threads);
     malloc_error2:
-    for(i=0;i<ThreadQuantity;i++) {
-        if(lp[i] != NULL) {
+    for(i=0;i<ThreadQuantity;i++)
+    {
+        if(lp[i] != NULL)
+        {
             free(lp[i]);
-        }else{
+        }
+        else
+        {
             break;
         }
     }
@@ -957,7 +1191,8 @@ int superset_gene_calc(RealNumber **gene,RealNumber *diff,struct st_data *data) 
     return ret_code;
 }
 
-void* calc_subset(void *arg) {
+void* calc_subset(void *arg)
+{
     void **args = (void *)arg;
     RealNumber **gene  = (RealNumber **)args[0];
     struct st_data *data = (struct st_data *)args[1];
@@ -980,15 +1215,18 @@ void* calc_subset(void *arg) {
     }
     
     a = (RealNumber ***)malloc(layer*sizeof(RealNumber **));
-    if(a == NULL) {
+    if(a == NULL)
+    {
         goto malloc_a_error1;
     }
     j = 0;
-    for(i=0;i<layer;i++) {
+    for(i=0;i<layer;i++)
+    {
         j += pix_ref*matrix_size[i][0] + aux_vector_size;
     }
     a[0] = (RealNumber **)malloc(j*sizeof(RealNumber *));
-    if(a[0] == NULL) {
+    if(a[0] == NULL)
+    {
         goto malloc_a_error2;
     }
     for(i=1;i<layer;i++)
@@ -1009,11 +1247,13 @@ void* calc_subset(void *arg) {
         goto malloc_b_error2;
     }
     b[1] = b[0] + j*k;
-    for(i=2;i<layer+1;i++) {
+    for(i=2;i<layer+1;i++)
+    {
         b[i] = b[i&0x01];
     }
     c = (RealNumber *)malloc(2*pix_ref*j*sizeof(RealNumber));
-    if(c == NULL) {
+    if(c == NULL)
+    {
         goto malloc_c_error;
     }
     diff = (RealNumber *)malloc(num_group_size*sizeof(RealNumber));
@@ -1048,7 +1288,7 @@ void* calc_subset(void *arg) {
 
     for(i=0;i<num_group_size;i++)
     {
-        diff[i] = 0.0;
+        calc_regularization(gene[i],diff + i);
     }
 
     for(i=0;i<num_group_size;i++)
@@ -1059,7 +1299,7 @@ void* calc_subset(void *arg) {
         }
     }
 
-    for(l=0;l<num_group_size*12;l++)
+    for(l=0;l<num_group_size;l++)
     {
         R_sort_p(diff,gene_index,num_group_size);
         gene_index[1][0] = 0;
@@ -1071,7 +1311,6 @@ void* calc_subset(void *arg) {
         }
         pthread_mutex_lock(&rand_mutex);
         get_random(urnd,q);
-        get_sud(temp_gene[1],1+element_size);
         pthread_mutex_unlock(&rand_mutex);
         for(i=0;i<q;i++)
         {
@@ -1107,22 +1346,12 @@ void* calc_subset(void *arg) {
                 temp_gene[0][j] += (double)(gene[gene_index[1][i]][j]);
             }
         }
-        if(temp_gene[1][element_size] < 0.0)
-        {
-            temp_gene[1][element_size] = 1.000;
-        }
-        else
-        {
-            temp_gene[1][element_size] = 0.001;
-        }
         for(i=0;i<element_size;i++)
         {
             temp_gene[0][i] /= (double)(q-1);
-            temp_gene[1][i] *= 0.1 * temp_gene[1][element_size];
-            calc_gene[i] = (RealNumber)((2.0+temp_gene[1][i])*temp_gene[0][i]
-                                       -(1.0+temp_gene[1][i])*((double)(gene[gene_index[1][q-1]][i])));
+            calc_gene[i] = (RealNumber)(2.0*temp_gene[0][i] - ((double)(gene[gene_index[1][q-1]][i])));
         }
-        temp_diff = 0.0;
+        calc_regularization(calc_gene,&temp_diff);
         for(j=0;j<num_data_set;j++)
         {
             calc(calc_gene,data + j,&temp_diff,a,b,c);
@@ -1144,25 +1373,12 @@ void* calc_subset(void *arg) {
             }
             diff[gene_index[1][q-1]] = temp_diff;
             continue;
-        }
-        pthread_mutex_lock(&rand_mutex);
-        get_sud(temp_gene[1],1+element_size);
-        pthread_mutex_unlock(&rand_mutex);
-        if(temp_gene[1][element_size] < 0.0)
-        {
-            temp_gene[1][element_size] = 1.000;
-        }
-        else
-        {
-            temp_gene[1][element_size] = 0.001;
         }
         for(i=0;i<element_size;i++)
         {
-            temp_gene[1][i] *= 0.1 * temp_gene[1][element_size];
-            calc_gene[i] = (RealNumber)((0.5 + temp_gene[1][i])*temp_gene[0][i]
-                                       +(0.5 - temp_gene[1][i])*((double)(gene[gene_index[1][q-1]][i])));
+            calc_gene[i] = (RealNumber)(0.5*(temp_gene[0][i] + ((double)(gene[gene_index[1][q-1]][i])) ));
         }
-        temp_diff = 0.0;
+        calc_regularization(calc_gene,&temp_diff);
         for(j=0;j<num_data_set;j++)
         {
             calc(calc_gene,data + j,&temp_diff,a,b,c);
@@ -1186,56 +1402,15 @@ void* calc_subset(void *arg) {
             continue;
         }
         pthread_mutex_lock(&rand_mutex);
-        get_sud(temp_gene[1],2+element_size);
+        get_sud(temp_gene[1],element_size);
         pthread_mutex_unlock(&rand_mutex);
-        if(temp_gene[1][element_size] < 0.0)
+        for(i=0;i<element_size;i++)
         {
-            temp_gene[1][element_size] = -temp_gene[1][element_size];
+            temp_gene[1][i] *= 0.3;
+            temp_gene[1][i] += temp_gene[0][i];
+            gene[gene_index[1][q-1]][i] = (RealNumber)temp_gene[1][i];
         }
-        if(temp_gene[1][element_size] < 0.0)
-        {
-            temp_gene[1][element_size + 1] *= temp_gene[1][element_size + 1];
-            i = (int)(temp_gene[1][element_size + 1] * (double)(num_group_size - 1));
-            i++;
-            if(i < 1)
-            {
-                i = 1;
-            }
-            if(i > num_group_size - 1)
-            {
-                i = num_group_size - 1;
-            }
-            temp_gene[1][element_size] = 10.0*diff[0]/diff[i];
-            if(!isfinite(temp_gene[1][element_size]) || temp_gene[1][element_size] < 1.0)
-            {
-                temp_gene[1][element_size] = 1.0;
-            }
-            for(j=0;j<element_size;j++)
-            {
-                gene[gene_index[1][q-1]][j] =
-                        (RealNumber)((1.0 + temp_gene[1][element_size] * temp_gene[1][j])*((double)gene[0][j]) +
-                        - temp_gene[1][element_size] * temp_gene[1][j]*((double)gene[i][j]));
-            }
-        }
-        else
-        {
-            i=0;
-            j=0;
-            for(k=0;k<layer;k++)
-            {
-                j += pix_ref * matrix_size[k][0]*matrix_size[k][1];
-                for(;i<j;i++)
-                {
-                    temp_gene[1][i] *= 1.5/((double)pix_ref);
-                }
-                j += aux_vector_size*matrix_size[k][1];
-                for(;i<j;i++)
-                {
-                    temp_gene[1][i] *= 0.3;
-                }
-            }
-        }
-        temp_diff = 0.0;
+        calc_regularization(gene[gene_index[1][q-1]],&temp_diff);
         for(j=0;j<num_data_set;j++)
         {
             calc(gene[gene_index[1][q-1]],data + j,&temp_diff,a,b,c);
@@ -1364,18 +1539,22 @@ int subset_gene_calc(RealNumber **superset_gene,int *superset_idx,char *file_nam
         goto error06;
     }
     threads = (pthread_t *)malloc(ThreadQuantity*sizeof(pthread_t));
-    if(threads == NULL) {
+    if(threads == NULL)
+    {
         ret_code = -1;
         goto error07;
     }
     lp = (void ***)malloc(ThreadQuantity*sizeof(void **));
-    if(lp == NULL) {
+    if(lp == NULL)
+    {
         ret_code = -1;
         goto error08;
     }
-    for(i=0;i<ThreadQuantity;i++) {
+    for(i=0;i<ThreadQuantity;i++)
+    {
         lp[i] = (void **)malloc(9*sizeof(void *));
-        if(lp[i] == NULL) {
+        if(lp[i] == NULL)
+        {
             ret_code = -1;
             goto error09;
         }
@@ -1389,7 +1568,8 @@ int subset_gene_calc(RealNumber **superset_gene,int *superset_idx,char *file_nam
     temp_gene[1] = temp_gene[0] + element_size;
     temp_gene[2] = temp_gene[1] + element_size;
     
-    for(i=0;i<ThreadQuantity;i++) {
+    for(i=0;i<ThreadQuantity;i++)
+    {
         lp[i][0] = (void *)subset_gene[i];
         lp[i][1] = (void *)data[i];
         lp[i][2] = (void *)subset_idx[i];
@@ -1489,9 +1669,12 @@ int subset_gene_calc(RealNumber **superset_gene,int *superset_idx,char *file_nam
                     break;
                 }
             }
-            if(m == -1  || (j!=0  && n == ThreadQuantity)) {
+            if(m == -1  || (j!=0  && n == ThreadQuantity))
+            {
                 break;
-            }else{
+            }
+            else
+            {
                 pthread_cond_wait(&cond, &mutex);
             }
         }
@@ -1613,6 +1796,7 @@ int main()
     char *file_name;
     ret_code = 0;
     element_size = 0;
+    num_group_size = 8;
     for(i=0;i<layer;i++)
     {
         element_size += (pix_ref*matrix_size[i][0] + aux_vector_size) * matrix_size[i][1];
@@ -1629,16 +1813,19 @@ int main()
         goto error02;
     }
 
-    data = (struct st_data *)malloc(sizeof(struct st_data));
+    data = (struct st_data *)malloc(num_data_set*sizeof(struct st_data));
     if(data == NULL)
     {
         ret_code = -1;
         goto error03;
     }
-    data[0].input_image_data = NULL;
-    data[0].output_image_data = NULL;
-    data[0].width = 0;
-    data[0].height = 0;
+    for(i=0;i<num_data_set;i++)
+    {
+        data[i].input_image_data = NULL;
+        data[i].output_image_data = NULL;
+        data[i].width = 0;
+        data[i].height = 0;
+    }
     superset_gene = (RealNumber **)malloc(num_parent*sizeof(RealNumber *));
     if(superset_gene == NULL)
     {
@@ -1685,57 +1872,71 @@ int main()
         }
     }
 
+    k=0;
     fcntl(0,F_SETFL,O_NONBLOCK);
     while(1)
     {
         random_list(file_index,data_pool_size);
-        for(i=0;i<num_parent;i++)
-        {
-            superset_diff[i] = 0.0;
-        }
         data_diff[0] = 0.0;
         for(i=0;i<num_data_set;i++)
         {
-            if(get_filedata(data,file_index[i]))
+            if(get_filedata(data+i,file_index[i]))
             {
                 ret_code = -1;
                 goto error11;
             }
             data_diff[1] = 0.0;
-            for(j=0;j < data->height * data->width * matrix_size[0][0];j++)
+            for(j=0;j < data[i].height * data[i].width * matrix_size[0][0];j++)
             {
-                data_diff[2] = ((double)(data->input_image_data[j])) - ((double)(data->output_image_data[j]));
+                data_diff[2] = ((double)(data[i].input_image_data[j])) - ((double)(data[i].output_image_data[j]));
                 data_diff[1] += data_diff[2] * data_diff[2];
             }
             data_diff[0] += data_diff[1];
-            superset_gene_calc(superset_gene,superset_diff,data);
         }
+        superset_gene_calc(superset_gene,superset_diff,data);
         error11:
-        if(data->input_image_data != NULL)
+        for(i=0;i<num_data_set;i++)
         {
-            free(data->input_image_data);
-            data->input_image_data = NULL;
-        }
-        if(data->output_image_data != NULL)
-        {
-            free(data->output_image_data);
-            data->output_image_data = NULL;
+            if(data[i].input_image_data != NULL)
+            {
+                free(data[i].input_image_data);
+                data[i].input_image_data = NULL;
+            }
+            if(data[i].output_image_data != NULL)
+            {
+                free(data[i].output_image_data);
+                data[i].output_image_data = NULL;
+            }
         }
         if(ret_code)
         {
             goto error09;
         }
         R_sort(superset_diff,superset_idx,num_parent);
-        for(i=0;i<num_parent;i++)
+        i=0;
+        j=0;
+        while(i<num_parent && j<100)
         {
-            printf("%f\n",superset_diff[superset_idx[num_parent-i-1]]/((RealNumber)num_data_set));
+            printf("%f\n",superset_diff[superset_idx[num_parent-i-1]]);
+            i += num_parent/100;
+            j++;
         }
-        printf("%d\n%f\n",superset_idx[0],data_diff[0]/((RealNumber)num_data_set));
+        printf("%d\n%f\n",superset_idx[0],data_diff[0]);
         subset_gene_calc(superset_gene,superset_idx,file_name);
         if(read(0,file_name,1023)>=0)
         {
             break;
         }
+        if(k == 2)
+        {
+            num_group_size *= 2;
+            k = 0;
+        }
+        if(num_group_size >=  num_parent)
+        {
+            num_group_size = 8;
+        }
+        k++;
     }
 
     error09:
