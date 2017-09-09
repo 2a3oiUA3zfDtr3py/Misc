@@ -565,8 +565,8 @@ int child_generator(int **parent_gene,int *parent_index,int num_parent,int **chi
     for(i=0;i<num_child;i++)
     {
         get_random(urnd,1);
-        urnd[0] = 1000;
-        if(urnd[0] < 50)
+        urnd[0] %= 1000;
+        if(urnd[0] < 10)
         {
             roulette_wheel_selector(urnd,temp[0],temp[1],2,num_parent);
             get_random(urnd+2,1);
@@ -646,7 +646,7 @@ int child_generator(int **parent_gene,int *parent_index,int num_parent,int **chi
 
         get_random(urnd,1);
         urnd[0] %= 1000;
-        if(urnd[0] < 30)
+        if(urnd[0] < 1)
         {
             get_random(urnd,2);
             urnd[0] %= world_stars - 1;
@@ -684,7 +684,7 @@ int child_generator(int **parent_gene,int *parent_index,int num_parent,int **chi
                 }
             }
         }
-        else if(urnd[0] < 100)
+        else if(urnd[0] < 2)
         {
             roulette_wheel_selector(urnd,temp[0],temp[1],1,num_parent);
             for(j=0;j<world_stars;j++)
@@ -835,8 +835,9 @@ int main()
     int i,j,k,l,m,n,ret_code;
     int **parent_gene,**child_gene,*index,*flags;
     RealNumber *parent_distance,*parent_entropy,*child_distance,*child_entropy,*parent_score,*child_score;
-    double t1,t2,Temperature,Entropy;
+    double t1,t2,t3,Temperature,Entropy;
     int num_parent,num_child;
+    uint64_t count;
     ret_code = 0;
     
     urandom_fd = open("/dev/urandom",O_RDONLY);
@@ -949,7 +950,7 @@ int main()
     {
         flags[i] = -1;
     }
-    m = num_parent/20;
+    m = num_parent/40;
     for(i=0;i<num_parent;i++)
     {
         if(i % m == 0)
@@ -975,23 +976,16 @@ int main()
     {
         t2 += (double)parent_distance[i];
     }
-    Temperature = t2 / Entropy;
+    Temperature = 1.0;
 
-    i=0;
+    count=0;
     n = 0;
     t2 = parent_distance[0];
+    t3 = parent_distance[num_parent-1];
     while(1)
     {
         sort(index,parent_distance,num_parent);
         evaluate_entropy(parent_gene,&t1,num_parent);
-        if(t2 - 0.001 <= parent_distance[index[0]])
-        {
-            n = 0;
-        }
-        else 
-        {
-            n = 1;
-        }
         printf("%f\n",t1);
         if(Entropy < t1)
         {
@@ -1002,7 +996,7 @@ int main()
         {
             Temperature *= 1.05;
         }
-        else if(n != 0)
+        else if(t2 - 0.001 >= parent_distance[index[0]])
         {
             Temperature *= 0.99;
         }
@@ -1011,7 +1005,7 @@ int main()
             Temperature *= 1.005;
         }
         t2 = parent_distance[index[0]];
-        printf("%8d %f %f\n",i++,Temperature,parent_distance[index[0]]);
+        printf("%8d %f %f\n",count++,Temperature,parent_distance[index[0]]);
         child_generator(parent_gene,index,num_parent,child_gene,num_child);
         evaluate_distance(child_gene,child_distance,num_child);
         initialize_probability_table();
